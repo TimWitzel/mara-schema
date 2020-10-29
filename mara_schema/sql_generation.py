@@ -44,16 +44,35 @@ def data_set_sql_query(data_set: DataSet,
     query = 'SELECT'
 
     column_definitions = []
-
+    is_any_attribute_aggregate = False
+    group_by = []
     # Iterate all connected entities
     for path, attributes in data_set.connected_attributes().items():
         first = True  # for adding an empty line between each entity
 
+        for _, attribute in attributes.items():
+            if attribute.aggregate:
+                is_any_attribute_aggregate = True
+                break
+
         # helper function for adding a column
         def add_column_definition(table_alias: str, column_name: str, column_alias: str,
-                                  cast_to_text: bool, first: bool, custom_column_expression: str = None):
+                                  cast_to_text: bool, first: bool, custom_column_expression: str = None,
+                                  is_aggregate: bool = False):
             column_definition = '\n    ' if first else '    '
-            column_definition += custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}'
+
+            column_aggregate_start = ''
+            column_aggregate_end = ''
+            if is_aggregate is False and is_any_attribute_aggregate:
+                column_aggregate_start = 'MIN('
+                column_aggregate_end = ')'
+
+            column_name_ = custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}'
+
+            if is_aggregate:
+                group_by.append(column_name_)
+
+            column_definition += column_aggregate_start + column_name_ + column_aggregate_end
             if cast_to_text:
                 column_definition += '::TEXT'
             if column_alias != column_name:
@@ -96,7 +115,8 @@ def data_set_sql_query(data_set: DataSet,
 
             first = add_column_definition(table_alias=table_alias, column_name=column_name, column_alias=column_alias,
                                           cast_to_text=attribute.type == Type.ENUM, first=first,
-                                          custom_column_expression=custom_column_expression)
+                                          custom_column_expression=custom_column_expression,
+                                          is_aggregate=attribute.aggregate)
 
     # helper function for pre-computing composed metrics
     def sql_formula(metric):
@@ -116,6 +136,22 @@ def data_set_sql_query(data_set: DataSet,
                 return metric.formula_template.format(
                     *[f'({sql_formula(metric)})' for metric in metric.parent_metrics])
 
+    def aggretation_on_simple_metric(metric: SimpleMetric, is_any_attribute_aggregate: bool = False):
+        aggregation_string_start = ''
+        aggregation_string_end = ''
+        if is_any_attribute_aggregate:
+            if metric.aggregation in (Aggregation.COUNT, Aggregation.DISTINCT_COUNT):
+                aggregation_string_start = 'COUNT('
+                aggregation_string_end = ')'
+            elif metric.aggregation == Aggregation.SUM:
+                aggregation_string_start = 'SUM('
+                aggregation_string_end = ')'
+            elif metric.aggregation == Aggregation.AVERAGE:
+                aggregation_string_start = 'AVG('
+                aggregation_string_end = ')'
+
+        return aggregation_string_start, aggregation_string_end
+
     first = True
     for name, metric in data_set.metrics.items():
         column_alias = metric.name if human_readable_columns else database_identifier(metric.name)
@@ -123,7 +159,9 @@ def data_set_sql_query(data_set: DataSet,
         if pre_computed_metrics:
             column_definition = f'    {sql_formula(metric)} AS {quote(column_alias)}'
         elif isinstance(metric, SimpleMetric):
-            column_definition = f'    {quote(entity_table_alias)}.{quote(metric.column_name)}'
+            aggregation_start, aggregation_end = aggretation_on_simple_metric(metric, is_any_attribute_aggregate)
+            column_definition = f'    {aggregation_start}{quote(entity_table_alias)}.{quote(metric.column_name)}' \
+                                f'{aggregation_end}'
             if column_alias != metric.column_name:
                 column_definition += f' AS {quote(column_alias)}'
         else:
@@ -150,6 +188,8 @@ def data_set_sql_query(data_set: DataSet,
         query += f'\nLEFT JOIN {quote(target_entity.schema_name)}.{quote(target_entity.table_name)} {quote(right_alias)}'
         query += f' ON {quote(left_alias)}.{quote(path[-1].fk_column)} = {quote(right_alias)}.{quote(target_entity.pk_column_name)}'
 
+    if is_any_attribute_aggregate:
+        query += f'\nGROUP BY {",".join(group_by)}'
     return query
 
 
