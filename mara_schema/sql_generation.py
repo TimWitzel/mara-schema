@@ -15,7 +15,8 @@ def data_set_sql_query(data_set: DataSet,
                        star_schema: bool = False,
                        personal_data=True,
                        high_cardinality_attributes=True,
-                       engine: sqlalchemy.engine.Engine = None) -> str:
+                       engine: sqlalchemy.engine.Engine = None,
+                       group_by=None) -> str:
     """
     Returns a SQL select statement that flattens all linked entities of a data set into a wide table
 
@@ -27,6 +28,7 @@ def data_set_sql_query(data_set: DataSet,
         personal_data: Whether to include attributes that are marked as personal data
         high_cardinality_attributes: Whether to include attributes that are marked to have a high cardinality
         engine: A sqlalchemy engine that is used to quote database identifiers. Defaults to a PostgreSQL engine.
+        group_by: A list by which you can do aggregation
 
     Returns:
         A string containing the select statement
@@ -44,18 +46,12 @@ def data_set_sql_query(data_set: DataSet,
     query = 'SELECT'
 
     column_definitions = []
-    is_any_attribute_aggregate = False
-    group_by = []
+    group_by_column = []
     # Iterate all connected entities
     for path, attributes in data_set.connected_attributes().items():
         first = True  # for adding an empty line between each entity
-
-        for _, attribute in attributes.items():
-            if attribute.aggregate:
-                is_any_attribute_aggregate = True
-                break
-
         # helper function for adding a column
+
         def add_column_definition(table_alias: str, column_name: str, column_alias: str,
                                   cast_to_text: bool, first: bool, custom_column_expression: str = None,
                                   is_aggregate: bool = False):
@@ -63,14 +59,12 @@ def data_set_sql_query(data_set: DataSet,
 
             column_aggregate_start = ''
             column_aggregate_end = ''
-            if is_aggregate is False and is_any_attribute_aggregate:
+            column_name_ = custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}'
+            if column_alias not in group_by and group_by:
                 column_aggregate_start = 'MIN('
                 column_aggregate_end = ')'
-
-            column_name_ = custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}'
-
-            if is_aggregate:
-                group_by.append(column_name_)
+            elif group_by:
+                group_by_column.append(column_name_)
 
             column_definition += column_aggregate_start + column_name_ + column_aggregate_end
             if cast_to_text:
@@ -136,10 +130,10 @@ def data_set_sql_query(data_set: DataSet,
                 return metric.formula_template.format(
                     *[f'({sql_formula(metric)})' for metric in metric.parent_metrics])
 
-    def aggretation_on_simple_metric(metric: SimpleMetric, is_any_attribute_aggregate: bool = False):
+    def aggretation_on_simple_metric(metric: SimpleMetric):
         aggregation_string_start = ''
         aggregation_string_end = ''
-        if is_any_attribute_aggregate:
+        if group_by:
             if metric.aggregation in (Aggregation.COUNT, Aggregation.DISTINCT_COUNT):
                 aggregation_string_start = 'COUNT('
                 aggregation_string_end = ')'
@@ -159,7 +153,7 @@ def data_set_sql_query(data_set: DataSet,
         if pre_computed_metrics:
             column_definition = f'    {sql_formula(metric)} AS {quote(column_alias)}'
         elif isinstance(metric, SimpleMetric):
-            aggregation_start, aggregation_end = aggretation_on_simple_metric(metric, is_any_attribute_aggregate)
+            aggregation_start, aggregation_end = aggretation_on_simple_metric(metric)
             column_definition = f'    {aggregation_start}{quote(entity_table_alias)}.{quote(metric.column_name)}' \
                                 f'{aggregation_end}'
             if column_alias != metric.column_name:
@@ -188,8 +182,8 @@ def data_set_sql_query(data_set: DataSet,
         query += f'\nLEFT JOIN {quote(target_entity.schema_name)}.{quote(target_entity.table_name)} {quote(right_alias)}'
         query += f' ON {quote(left_alias)}.{quote(path[-1].fk_column)} = {quote(right_alias)}.{quote(target_entity.pk_column_name)}'
 
-    if is_any_attribute_aggregate:
-        query += f'\nGROUP BY {",".join(group_by)}'
+    if group_by:
+        query += f'\nGROUP BY {",".join(group_by_column)}'
     return query
 
 

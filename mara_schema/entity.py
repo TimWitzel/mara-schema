@@ -32,7 +32,7 @@ class Entity():
 
     def add_attribute(self, name: str, description: str, column_name: str = None, type: Type = None,
                       high_cardinality: bool = False, personal_data: bool = False, important_field: bool = False,
-                      accessible_via_entity_link: bool = True, aggregate: bool = False) -> None:
+                      accessible_via_entity_link: bool = True) -> None:
         """
         Adds a property based on a column in the underlying dimensional table to the entity
 
@@ -47,7 +47,6 @@ class Entity():
             important_field: A field that highlights the the data set. Shown by default in overviews
             accessible_via_entity_link: If False, then this attribute is excluded from data sets that are not
                      based on this entity
-            aggregate: If True, then aggregate on this attribute
         """
         self.attributes.append(
             Attribute(
@@ -58,8 +57,7 @@ class Entity():
                 type=type,
                 high_cardinality=high_cardinality,
                 personal_data=personal_data,
-                important_field=important_field,
-                aggregate=aggregate
+                important_field=important_field
             ))
 
     def link_entity(self, target_entity: 'Entity', fk_column: str = None,

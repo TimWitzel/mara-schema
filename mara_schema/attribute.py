@@ -25,7 +25,7 @@ class Attribute():
 
     def __init__(self, name: str, description: str, column_name: str,
                  accessible_via_entity_link: bool, type: 'Type' = None, high_cardinality: bool = False,
-                 personal_data: bool = False, important_field: bool = False, aggregate: bool = False) -> None:
+                 personal_data: bool = False, important_field: bool = False) -> None:
         """See documentation of function Entity.add_attribute"""
         self.name = name
         self.description = description
@@ -35,7 +35,6 @@ class Attribute():
         self.personal_data = personal_data
         self.important_field = important_field
         self.accessible_via_entity_link = accessible_via_entity_link
-        self.aggregate = aggregate
 
     def __repr__(self) -> str:
         return f'<Attribute "{self.name}">'
