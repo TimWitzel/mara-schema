@@ -44,12 +44,12 @@ def data_set_sql_query(data_set: DataSet,
     query = 'SELECT'
 
     column_definitions = []
+    
     # Iterate all connected entities
     for path, attributes in data_set.connected_attributes().items():
         first = True  # for adding an empty line between each entity
 
         # helper function for adding a column
-
         def add_column_definition(table_alias: str, column_name: str, column_alias: str,
                                   cast_to_text: bool, first: bool, custom_column_expression: str = None):
             column_definition = '\n    ' if first else '    '
