@@ -215,9 +215,6 @@ def aggregate_table_sql_query(data_set: DataSet,
                                   cast_to_text: bool, first: bool, custom_column_expression: str = None,
                                   date_column:str = ''):
             column_definition = '\n    ' if first else '    '
-            import sys
-            print('date_column: ' + date_column, file=sys.stderr)
-            print('column alias: ' + column_alias, file=sys.stderr)
             if column_alias.lower() in [e.lower() for e in group_by]:
                 column_definition += custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}'
                 group_by_column.append(custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}')
