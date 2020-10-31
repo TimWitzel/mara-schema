@@ -44,7 +44,7 @@ def data_set_sql_query(data_set: DataSet,
     query = 'SELECT'
 
     column_definitions = []
-    
+
     # Iterate all connected entities
     for path, attributes in data_set.connected_attributes().items():
         first = True  # for adding an empty line between each entity
@@ -169,15 +169,16 @@ def aggregate_table_sql_query(data_set: DataSet,
                               personal_data=True,
                               high_cardinality_attributes=True,
                               engine: sqlalchemy.engine.Engine = None,
-                              group_by=[],
+                              group_by: [] = [],
+                              date_column: str = '',
                               by_week: bool = False,
                               by_month: bool = False,
                               by_year: bool = False) -> str:
     """
-    Returns a SQL select statement that flattens all linked entities of a data set into a wide table
+    Returns a SQL select statement that create aggregate table for a data set
 
     Args:
-        data_set: the data set to flatten
+        data_set: the data set to create aggregate table for
         human_readable_columns: Whether to use "Customer name" rather than "customer_name" as column name
         pre_computed_metrics: Whether to pre-compute composed metrics, counts and distinct counts on row level
         star_schema: Whether to add foreign keys to the tables of linked entities rather than including their attributes
@@ -185,7 +186,7 @@ def aggregate_table_sql_query(data_set: DataSet,
         high_cardinality_attributes: Whether to include attributes that are marked to have a high cardinality
         engine: A sqlalchemy engine that is used to quote database identifiers. Defaults to a PostgreSQL engine.
         group_by: A list by which you can do aggregation
-        by_week
+        by_week:
 
     Returns:
         A string containing the select statement
@@ -211,19 +212,40 @@ def aggregate_table_sql_query(data_set: DataSet,
         # helper function for adding a column
 
         def add_column_definition(table_alias: str, column_name: str, column_alias: str,
-                                  cast_to_text: bool, first: bool, custom_column_expression: str = None):
+                                  cast_to_text: bool, first: bool, custom_column_expression: str = None,
+                                  date_column:str = ''):
             column_definition = '\n    ' if first else '    '
             import sys
-            print(column_alias, file=sys.stderr)
+            print('date_column: ' + date_column, file=sys.stderr)
+            print('column alias: ' + column_alias, file=sys.stderr)
             if column_alias.lower() in [e.lower() for e in group_by]:
                 column_definition += custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}'
                 group_by_column.append(custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}')
-
                 if cast_to_text:
                     column_definition += '::TEXT'
                 if column_alias != column_name:
                     column_definition += f' AS {quote(column_alias)}'
                 column_definitions.append(column_definition)
+            elif column_alias.lower() == date_column.lower():
+                column_definition = ''
+                column_name = date_column.lower().replace(' ', '_') + '_fk'
+                if by_week:
+                    column = f"to_char(to_date({column_name}:: TEXT, 'YYYYMMDD'), 'IYYYIW')"
+
+                    column_definition = f"\n    {column}:: INTEGER AS week_id"
+                    column_definitions.append(column_definition)
+                    group_by_column.append(column)
+                if by_month:
+                    column = f"to_char(to_date({column_name}:: TEXT, 'YYYYMMDD'), 'YYYYMM')"
+                    column_definition = f"\n    {column}:: INTEGER AS month_id"
+                    column_definitions.append(column_definition)
+                    group_by_column.append(column)
+
+                if by_year:
+                    column = f"extract('year' from to_date({column_name}:: TEXT, 'YYYYMMDD'))"
+                    column_definition = f"\n    {column}:: INTEGER AS year_id"
+                    column_definitions.append(column_definition)
+                    group_by_column.append(column)
 
             return False
 
@@ -241,7 +263,7 @@ def aggregate_table_sql_query(data_set: DataSet,
 
             first = add_column_definition(table_alias=table_alias, column_name=column_name, column_alias=column_alias,
                                           cast_to_text=attribute.type == Type.ENUM, first=first,
-                                          custom_column_expression=custom_column_expression)
+                                          custom_column_expression=custom_column_expression, date_column=date_column)
 
     # helper function for pre-computing composed metrics
 
@@ -292,10 +314,12 @@ def aggregate_table_sql_query(data_set: DataSet,
         entity_link = path[-1]
         target_entity = entity_link.target_entity
 
-        if right_alias.split('.')[0] in [ group_.split('.')[0] for group_ in group_by_column]:
+        if right_alias.split('.')[0] in [group_.split('.')[0] for group_ in group_by_column] or \
+                right_alias.split('.')[0] == date_column.lower():
 
             query += f'\nLEFT JOIN {quote(target_entity.schema_name)}.{quote(target_entity.table_name)} {quote(right_alias)}'
             query += f' ON {quote(left_alias)}.{quote(path[-1].fk_column)} = {quote(right_alias)}.{quote(target_entity.pk_column_name)}'
+
 
     if group_by:
         query += f'\nGROUP BY {", ".join(group_by_column)}'
