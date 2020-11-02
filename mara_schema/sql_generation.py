@@ -213,7 +213,7 @@ def aggregate_table_sql_query(data_set: DataSet,
 
         def add_column_definition(table_alias: str, column_name: str, column_alias: str,
                                   cast_to_text: bool, first: bool, custom_column_expression: str = None,
-                                  date_column:str = ''):
+                                  date_column:str = '', date_column_name: str = ''):
             column_definition = '\n    ' if first else '    '
             if column_alias.lower() in [e.lower() for e in group_by]:
                 column_definition += custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}'
@@ -225,21 +225,20 @@ def aggregate_table_sql_query(data_set: DataSet,
                 column_definitions.append(column_definition)
             elif column_alias.lower() == date_column.lower():
                 column_definition = ''
-                column_name = date_column.lower().replace(' ', '_') + '_fk'
                 if by_week:
-                    column = f"to_char(to_date({column_name}:: TEXT, 'YYYYMMDD'), 'IYYYIW')"
+                    column = f"to_char(to_date({date_column_name}:: TEXT, 'YYYYMMDD'), 'IYYYIW')"
 
                     column_definition = f"\n    {column}:: INTEGER AS week_id"
                     column_definitions.append(column_definition)
                     group_by_column.append(column)
                 if by_month:
-                    column = f"to_char(to_date({column_name}:: TEXT, 'YYYYMMDD'), 'YYYYMM')"
+                    column = f"to_char(to_date({date_column_name}:: TEXT, 'YYYYMMDD'), 'YYYYMM')"
                     column_definition = f"\n    {column}:: INTEGER AS month_id"
                     column_definitions.append(column_definition)
                     group_by_column.append(column)
 
                 if by_year:
-                    column = f"extract('year' from to_date({column_name}:: TEXT, 'YYYYMMDD'))"
+                    column = f"extract('year' from to_date({date_column_name}:: TEXT, 'YYYYMMDD'))"
                     column_definition = f"\n    {column}:: INTEGER AS year_id"
                     column_definitions.append(column_definition)
                     group_by_column.append(column)
@@ -253,6 +252,10 @@ def aggregate_table_sql_query(data_set: DataSet,
             if attribute.high_cardinality and not high_cardinality_attributes:
                 continue
 
+            fk_column = ''
+            if path:
+                fk_column = path[0].fk_column
+                
             table_alias = table_alias_for_path(path) if path else entity_table_alias
             column_name = attribute.column_name
             column_alias = name if human_readable_columns else database_identifier(name)
@@ -260,7 +263,8 @@ def aggregate_table_sql_query(data_set: DataSet,
 
             first = add_column_definition(table_alias=table_alias, column_name=column_name, column_alias=column_alias,
                                           cast_to_text=attribute.type == Type.ENUM, first=first,
-                                          custom_column_expression=custom_column_expression, date_column=date_column)
+                                          custom_column_expression=custom_column_expression, date_column=date_column,
+                                          date_column_name=fk_column)
 
     # helper function for pre-computing composed metrics
 
