@@ -7,7 +7,7 @@ from .attribute import Type, normalize_name
 from .data_set import DataSet
 from .entity import EntityLink
 from .metric import SimpleMetric, Aggregation
-
+from .aggregate_exception import DistinctCountAggregateException
 
 def data_set_sql_query(data_set: DataSet,
                        human_readable_columns=True,
@@ -255,7 +255,7 @@ def aggregate_table_sql_query(data_set: DataSet,
             fk_column = ''
             if path:
                 fk_column = path[0].fk_column
-                
+
             table_alias = table_alias_for_path(path) if path else entity_table_alias
             column_name = attribute.column_name
             column_alias = name if human_readable_columns else database_identifier(name)
@@ -268,11 +268,11 @@ def aggregate_table_sql_query(data_set: DataSet,
 
     # helper function for pre-computing composed metrics
 
-    def aggretation_on_simple_metric(metric: SimpleMetric):
+    def aggregation_on_simple_metric(metric: SimpleMetric):
         aggregation_string_start = ''
         aggregation_string_end = ''
         if group_by:
-            if metric.aggregation in (Aggregation.COUNT, Aggregation.DISTINCT_COUNT):
+            if metric.aggregation == Aggregation.COUNT: # what do we do about distinct count e.g. error or so.
                 aggregation_string_start = 'COUNT('
                 aggregation_string_end = ')'
             elif metric.aggregation == Aggregation.SUM:
@@ -281,6 +281,8 @@ def aggregate_table_sql_query(data_set: DataSet,
             elif metric.aggregation == Aggregation.AVERAGE:
                 aggregation_string_start = 'AVG('
                 aggregation_string_end = ')'
+            elif metric.aggregation == Aggregation.DISTINCT_COUNT:
+                raise DistinctCountAggregateException('Distinct count can not be used in aggregate tables')
 
         return aggregation_string_start, aggregation_string_end
 
@@ -289,7 +291,7 @@ def aggregate_table_sql_query(data_set: DataSet,
         column_alias = metric.name if human_readable_columns else database_identifier(metric.name)
 
         if isinstance(metric, SimpleMetric):
-            aggregation_start, aggregation_end = aggretation_on_simple_metric(metric)
+            aggregation_start, aggregation_end = aggregation_on_simple_metric(metric)
             column_definition = f'    {aggregation_start}{quote(entity_table_alias)}.{quote(metric.column_name)}' \
                                 f'{aggregation_end}'
             if column_alias != metric.column_name:
@@ -320,7 +322,6 @@ def aggregate_table_sql_query(data_set: DataSet,
 
             query += f'\nLEFT JOIN {quote(target_entity.schema_name)}.{quote(target_entity.table_name)} {quote(right_alias)}'
             query += f' ON {quote(left_alias)}.{quote(path[-1].fk_column)} = {quote(right_alias)}.{quote(target_entity.pk_column_name)}'
-
 
     if group_by:
         query += f'\nGROUP BY {", ".join(group_by_column)}'
