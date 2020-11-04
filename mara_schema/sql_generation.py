@@ -7,7 +7,7 @@ from .attribute import Type, normalize_name
 from .data_set import DataSet
 from .entity import EntityLink
 from .metric import SimpleMetric, Aggregation
-from .aggregate_exception import DistinctCountAggregateException
+
 
 def data_set_sql_query(data_set: DataSet,
                        human_readable_columns=True,
@@ -282,8 +282,8 @@ def aggregate_table_sql_query(data_set: DataSet,
                 aggregation_string_start = 'AVG('
                 aggregation_string_end = ')'
             elif metric.aggregation == Aggregation.DISTINCT_COUNT:
-                raise DistinctCountAggregateException('Distinct count can not be used in aggregate tables')
-
+                aggregation_string_start = 'COUNT(DISTINCT '
+                aggregation_string_end = ')'
         return aggregation_string_start, aggregation_string_end
 
     first = True
