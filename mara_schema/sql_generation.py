@@ -215,7 +215,7 @@ def aggregate_table_sql_query(data_set: DataSet,
                                   cast_to_text: bool, first: bool, custom_column_expression: str = None,
                                   date_column:str = '', date_column_name: str = ''):
             column_definition = '\n    ' if first else '    '
-            if column_alias.lower() in [e.lower() for e in group_by]:
+            if column_alias.lower() in [e.lower() for e in group_by] or (group_by == [] and column_alias.lower() != date_column.lower()):
                 column_definition += custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}'
                 group_by_column.append(custom_column_expression or f'{quote(table_alias)}.{quote(column_name)}')
                 if cast_to_text:
@@ -238,7 +238,7 @@ def aggregate_table_sql_query(data_set: DataSet,
                     group_by_column.append(column)
 
                 if by_year:
-                    column = f"extract('year' from to_date({date_column_name}:: TEXT, 'YYYYMMDD'))"
+                    column = f"extract('isoyear' from to_date({date_column_name}:: TEXT, 'YYYYMMDD'))"
                     column_definition = f"\n    {column}:: INTEGER AS year_id"
                     column_definitions.append(column_definition)
                     group_by_column.append(column)
@@ -271,19 +271,18 @@ def aggregate_table_sql_query(data_set: DataSet,
     def aggregation_on_simple_metric(metric: SimpleMetric):
         aggregation_string_start = ''
         aggregation_string_end = ''
-        if group_by:
-            if metric.aggregation == Aggregation.COUNT: # what do we do about distinct count e.g. error or so.
-                aggregation_string_start = 'COUNT('
-                aggregation_string_end = ')'
-            elif metric.aggregation == Aggregation.SUM:
-                aggregation_string_start = 'SUM('
-                aggregation_string_end = ')'
-            elif metric.aggregation == Aggregation.AVERAGE:
-                aggregation_string_start = 'AVG('
-                aggregation_string_end = ')'
-            elif metric.aggregation == Aggregation.DISTINCT_COUNT:
-                aggregation_string_start = 'COUNT(DISTINCT '
-                aggregation_string_end = ')'
+        if metric.aggregation == Aggregation.COUNT:
+            aggregation_string_start = 'COUNT('
+            aggregation_string_end = ')'
+        elif metric.aggregation == Aggregation.SUM:
+            aggregation_string_start = 'SUM('
+            aggregation_string_end = ')'
+        elif metric.aggregation == Aggregation.AVERAGE:
+            aggregation_string_start = 'AVG('
+            aggregation_string_end = ')'
+        elif metric.aggregation == Aggregation.DISTINCT_COUNT:
+            aggregation_string_start = 'COUNT(DISTINCT '
+            aggregation_string_end = ')'
         return aggregation_string_start, aggregation_string_end
 
     first = True
@@ -323,6 +322,6 @@ def aggregate_table_sql_query(data_set: DataSet,
             query += f'\nLEFT JOIN {quote(target_entity.schema_name)}.{quote(target_entity.table_name)} {quote(right_alias)}'
             query += f' ON {quote(left_alias)}.{quote(path[-1].fk_column)} = {quote(right_alias)}.{quote(target_entity.pk_column_name)}'
 
-    if group_by:
+    if group_by_column:
         query += f'\nGROUP BY {", ".join(group_by_column)}'
     return query
